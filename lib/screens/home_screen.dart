@@ -340,7 +340,8 @@ class_HomeScreenState extends State<HomeScreen> {
           ),
 
 
-           Expanded(
+          // GLOBAL LIST
+          Expanded(
             child: StreamBuilder<List<Map<String, dynamic>>>(
               stream: FirebaseService.getAllDevicesStream(),
               builder: (context, snapshot) {
@@ -358,7 +359,7 @@ class_HomeScreenState extends State<HomeScreen> {
                   );
                 }
 
-               return ListView.builder(
+                return ListView.builder(
                   padding: const EdgeInsets.all(8),
                   itemCount: otherDevices.length,
                   itemBuilder: (context, index) {
