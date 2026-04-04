@@ -7,82 +7,121 @@ import '../services/firebase_service.dart';
 import '../services/location_service.dart';
 import '../models/tracking_session.dart';
 
-class TrackingScreenA extends StatefulWidget {
+class TrackingScreenA extends
+StatefulWidget {
   final String sessionId;
   final String friendId;
   final String friendName;
   final String myDeviceId;
 
-  const TrackingScreenA({
+  const TrackingScreenA ({  
     super.key,
     required this.sessionId,
-    required this.friendId,
+    required this.friendId
     required this.friendName,
     required this.myDeviceId,
+  
   });
 
   @override
-  State<TrackingScreenA> createState() => _TrackingScreenAState();
+    State<TrackingScreenA> createState() =>
+    TrackingScreenAState();
 }
 
 class _TrackingScreenAState extends State<TrackingScreenA>
-    with TickerProviderStateMixin {
+with TickerProviderStateMixin {
   StreamSubscription<Position>? _locationSubscription;
   StreamSubscription<CompassEvent>? _compassSubscription;
-  StreamSubscription<LocationData?>? _friendLocationSubscription;
+  StreamSubscription<LocationData?>?
+   _friendLocationSubscription;
 
-  double? myLat;
-  double? myLng;
+   //RAW GPS POSITION
+   double? myLat;
+    double? myLng;
   double myHeading = 0;
-
   double? friendLat;
   double? friendLng;
 
+  // ── Arrow Precision: Multi-sample bearing buffer ──
+  // We keep the last N bearing readings and average them
+  // to eliminate GPS micro-drift noise.
+  final List<double> _bearingHistory = [];
+  static const int _bearingHistorySize = 5;
+
+  //smoothed values for dispaly
+  double_smoothedHeading = 0;
+  double_smoothedBearing =0;
+
+  //Smoothing alphas: lower smother/steadier,higherfaster/noise
+  // Compass needs heavy smoothing (sensors are noisy)
+  // Bearing needs moderate smoothing (GPS updates are infrequent)
+  static const double _headingAlpha = 0.18; // Slightly increased for responsiveness
+  static const double _bearingAlpha = 0.28; // Slightly increased for responsiveness
+
+  // Previous raw heading for detecting significant changes
+  double _prevRawHeading = 0;
+
+  //close reange effects
   late AnimationController _pulseController;
+  final AudioPlayer _audioPlayer = AudioPlayer();
+  Timer? _fluctuationTimer;
+  Timer? _beepTimer;
+  double? _displayedDistance;
+  double? _fakeDistanceVal; // Track the "slow decrease" distance
+  DateTime? _closeRangeStartTime;
+  bool _lockedAt1m = false;
 
   @override
   void initState() {
     super.initState();
-
     _pulseController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 2000),
     )..repeat();
-
     _startTracking();
   }
+
+  //TRACKING STREAMS
 
   Future<void> _startTracking() async {
     final hasPermission = await LocationService.requestPermission();
     if (!hasPermission) return;
 
+    // ── My location stream ──
     _locationSubscription =
         LocationService.getPositionStream().listen((position) {
       if (!mounted) return;
-
       setState(() {
         myLat = position.latitude;
         myLng = position.longitude;
       });
+
+      // Use GPS heading when moving (more accurate than compass when walking)
+      if (position.speed > 0.5 && position.heading != 0) {
+        _applyHeading(position.heading);
+      }
+
+      _recalcBearing();
+      _updateDistance();
 
       FirebaseService.updateLocation(
         widget.sessionId,
         widget.myDeviceId,
         position.latitude,
         position.longitude,
-        myHeading,
+        _smoothedHeading,
       );
     });
 
+     // ── Compass stream (supplements GPS heading when stationary) ──
     _compassSubscription = FlutterCompass.events?.listen((event) {
       if (!mounted) return;
       if (event.heading != null) {
-        setState(() {
-          myHeading = event.heading!;
-        });
+        _applyHeading(event.heading!);
       }
     });
 
+    // ── Friend location stream ──
     _friendLocationSubscription = FirebaseService.listenToLocation(
       widget.sessionId,
       widget.friendId,
@@ -91,53 +130,154 @@ class _TrackingScreenAState extends State<TrackingScreenA>
       if (locationData != null) {
         setState(() {
           friendLat = locationData.lat;
+
           friendLng = locationData.lng;
         });
+        _recalcBearing();
+        _updateDistance();
       }
+    });
+  }  
+
+  //HEADING 
+  void _applyHeading(double rawHeading) {
+    // Ignore tiny jitter (< 1 degree change)
+    double diff = (rawHeading - _prevRawHeading + 540) % 360 - 180;
+    if (diff.abs() < 1.0) return;
+    _prevRawHeading = rawHeading;
+
+    setState(() {
+      myHeading = rawHeading;
+      _smoothedHeading = LocationService.smoothAngle(
+        _smoothedHeading,
+        rawHeading,
+        _headingAlpha,
+      );
+    });
+  }
+//BEARING CALCULATION &SMOOTHING
+      void _recalcBearing() {
+    if (myLat == null        friendLat == null || friendLng == null) return;
+
+    final rawBearing = LocationService.calculateBearing(
+        myLat!, myLng!, friendLat!, friendLng!);
+
+    // Add to history buffer
+    _bearingHistory.add(rawBearing);
+    if (_bearingHistory.length > _bearingHistorySize) {
+      _bearingHistory.removeAt(0);
+    }
+
+    // Average the bearing history using circular mean
+    final avgBearing = _circularMean(_bearingHistory);
+
+    setState(() {
+      _smoothedBearing = LocationService.smoothAngle(
+        _smoothedBearing,
+        avgBearing,
+        _bearingAlpha,
+      );
     });
   }
 
-  double? _calculateDistance() {
-    if (myLat == null ||
-        myLng == null ||
-        friendLat == null ||
-        friendLng == null) {
-      return null;
+  /// Circular mean of a list of angles (handles 0/360 wrapping)
+  double _circularMean(List<double> angles) {
+    double sumSin = 0, sumCos = 0;
+    for (final a in angles) {
+      final rad = a * pi / 180;
+      sumSin += sin(rad);
+      sumCos += cos(rad);
     }
-
-    return LocationService.calculateDistance(
-        myLat!, myLng!, friendLat!, friendLng!);
+    final meanRad = atan2(sumSin / angles.length, sumCos / angles.length);
+    return (meanRad * 180 / pi + 360) % 360;
   }
 
-  double? _calculateBearing() {
-    if (myLat == null ||
-        myLng == null ||
-        friendLat == null ||
-        friendLng == null) {
-      return null;
-    }
+  //ARROW ROTATION
 
-    return LocationService.calculateBearing(
-        myLat!, myLng!, friendLat!, friendLng!);
-  }
-
-  double _calculateArRotation() {
-    final bearing = _calculateBearing();
-    if (bearing == null) return 0;
-    return (bearing - myHeading);
+  double _calculateArrowRotation() {
+    // Relative bearing = where the friend is relative to where I'm facing
+    return (_smoothedBearing - _smoothedHeading);
   }
 
   String _getDirectionText() {
-    final bearing = _calculateBearing();
-    if (bearing == null) return 'Searching...';
-
-    double relative = (bearing - myHeading + 360) % 360;
+    double relative = (_smoothedBearing - _smoothedHeading + 360) % 360;
     return LocationService.getDirectionText(relative);
   }
+ //DISTANCE&CLOSERANGE EFFECTS
+ void _updateDistance() {
+    if (myLat == null        friendLat == null || friendLng == null) return;
 
+    final realDist = LocationService.calculateDistance(
+        myLat!, myLng!, friendLat!, friendLng!);
+
+    if (realDist <= 5.0) {
+      // Enter or stay in close-range mode (5m)
+      if (_closeRangeStartTime == null) {
+        _closeRangeStartTime = DateTime.now();
+        _fakeDistanceVal = realDist; // Start fake decrease from current real pos
+        _startCloseRangeEffects();
+      }
+    } else {
+      // DYNAMIC: Reset if distance > 5m
+      if (_closeRangeStartTime != null) {
+        _stopCloseRangeEffects();
+      }
+      setState(() {
+        _displayedDistance = realDist;
+      });
+    }
+  }
+
+  void _startCloseRangeEffects() {
+    _fluctuationTimer?.cancel();
+    _beepTimer?.cancel();
+    _lockedAt1m = false;
+
+    // Slowly decrease distance toward 1.0m as integers
+    _fluctuationTimer = Timer.periodic(const Duration(milliseconds: 1000), (timer) {
+      if (!mounted) return;
+      
+      if (_fakeDistanceVal != null && _fakeDistanceVal! > 1.0) {
+        setState(() {
+          // Decrement by 1m every second (Integer only: 5 -> 4 -> 3 -> 2 -> 1)
+          _fakeDistanceVal = max(1.0, _fakeDistanceVal!.floorToDouble() - 1.0);
+          _displayedDistance = _fakeDistanceVal;
+        });
+        
+        if (_fakeDistanceVal == 1.0) {
+          _lockedAt1m = true;
+          timer.cancel(); // Stop once we hit the target
+        }
+      } else {
+        setState(() {
+          _displayedDistance = 1.0;
+
+          _lockedAt1m =true;
+        });
+        timer.cancel();
+      }
+    });
+
+    _beepTimer = Timer.periodic(const Duration(milliseconds:1000),(timer)async {  
+      if (hasVibrator ==true) {
+        Vibration.vibrate(duration:200);
+      }
+      await _audioPlayer.play(AssetSource('audio/beep.ogg'));
+    });
+  }
+
+  void _stopCloseRangeEffects() {
+    _fluctuationTimer?.cancel();
+    _beepTimer?.cancel();
+    _closeRangeStartTime = null;
+    _fakeDistanceVal = null;
+    _lockedAt1m = false;
+  }
+
+  //BUILD
   @override
-  Widget build(BuildContext context) {
-    final distance = _calculateDistance();
+     Widget build(BuildContext context) {
+    final distance = _displayedDistance;
     final arrowRotation = _calculateArrowRotation();
 
     return Scaffold(
@@ -163,7 +303,6 @@ class _TrackingScreenAState extends State<TrackingScreenA>
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-
                   /// TOP BAR
                   Padding(
                     padding: const EdgeInsets.fromLTRB(20, 18, 20, 0),
@@ -209,28 +348,28 @@ class _TrackingScreenAState extends State<TrackingScreenA>
                     ),
                   ),
 
-                  /// CENTER
+                  /// CENTER – Arrow
                   SizedBox(
                     width: 280,
                     height: 280,
                     child: Stack(
                       alignment: Alignment.center,
                       children: [
-
                         AnimatedBuilder(
                           animation: _pulseController,
                           builder: (_, __) {
                             return Stack(
                               alignment: Alignment.center,
-                              children: [
+                               children: [
                                 _ring(220, _pulseController.value),
-                                _ring(180, (_pulseController.value + 0.3) % 1),
-                                _ring(140, (_pulseController.value + 0.6) % 1),
+                                _ring(
+                                    180, (_pulseController.value + 0.3) % 1),
+                                _ring(
+                                    140, (_pulseController.value + 0.6) % 1),
                               ],
                             );
                           },
                         ),
-
                         Container(
                           width: 140,
                           height: 140,
@@ -239,10 +378,10 @@ class _TrackingScreenAState extends State<TrackingScreenA>
                             color: Colors.white.withOpacity(0.2),
                           ),
                         ),
-
                         TweenAnimationBuilder<double>(
-                          duration: const Duration(milliseconds: 300),
+                          duration: const Duration(milliseconds: 200),
                           tween: Tween(begin: 0, end: arrowRotation),
+                          curve: Curves.easeOutCubic,
                           builder: (context, angle, child) {
                             return Transform.rotate(
                               angle: angle * pi / 180,
@@ -315,7 +454,7 @@ class _TrackingScreenAState extends State<TrackingScreenA>
                               color: Colors.white,
                               fontWeight: FontWeight.bold,
                             ),
-                          ),
+                               ),
                         ),
                       ),
                     ),
@@ -355,11 +494,16 @@ class _TrackingScreenAState extends State<TrackingScreenA>
     _compassSubscription?.cancel();
     _friendLocationSubscription?.cancel();
     _pulseController.dispose();
+    _stopCloseRangeEffects();
+    _audioPlayer.dispose();
     super.dispose();
   }
 }
 
-/// 🔥 3D ARROW
+// ══════════════════════════════════════════════════════
+//  3D ARROW WIDGET
+// ══════════════════════════════════════════════════════
+
 class Arrow3D extends StatelessWidget {
   final double size;
   const Arrow3D({super.key, required this.size});
@@ -380,14 +524,14 @@ class ArrowPainter extends CustomPainter {
     final h = size.height;
 
     final leftPaint = Paint()
-      ..shader = LinearGradient(
+      ..shader = const LinearGradient(
         colors: [Color(0xFF3DAEFF), Color(0xFF007BFF)],
         begin: Alignment.topCenter,
         end: Alignment.bottomCenter,
       ).createShader(Rect.fromLTWH(0, 0, w, h));
 
     final rightPaint = Paint()
-      ..shader = LinearGradient(
+      ..shader = const LinearGradient(
         colors: [Colors.white, Color(0xFFE6F7FF)],
       ).createShader(Rect.fromLTWH(0, 0, w, h));
 
@@ -410,3 +554,7 @@ class ArrowPainter extends CustomPainter {
   @override
   bool shouldRepaint(CustomPainter oldDelegate) => false;
 }
+
+    
+
+    
