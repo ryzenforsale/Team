@@ -24,7 +24,7 @@ class BluetoothDistaneService {
         Permission.location,
       ].request();
 
-      return statuses.values.every((status)) => status.isGrandted);
+      return statuses.values.every((status)) => status.isGranted);
     }
     return true;
   }

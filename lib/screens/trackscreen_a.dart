@@ -35,39 +35,32 @@ with TickerProviderStateMixin {
   StreamSubscription<LocationData?>?
    _friendLocationSubscription;
 
-   //RAW GPS POSITION
    double? myLat;
     double? myLng;
   double myHeading = 0;
   double? friendLat;
   double? friendLng;
 
-  // ── Arrow Precision: Multi-sample bearing buffer ──
-  // We keep the last N bearing readings and average them
-  // to eliminate GPS micro-drift noise.
+  
   final List<double> _bearingHistory = [];
   static const int _bearingHistorySize = 5;
 
-  //smoothed values for dispaly
+
   double_smoothedHeading = 0;
   double_smoothedBearing =0;
 
-  //Smoothing alphas: lower smother/steadier,higherfaster/noise
-  // Compass needs heavy smoothing (sensors are noisy)
-  // Bearing needs moderate smoothing (GPS updates are infrequent)
-  static const double _headingAlpha = 0.18; // Slightly increased for responsiveness
-  static const double _bearingAlpha = 0.28; // Slightly increased for responsiveness
 
-  // Previous raw heading for detecting significant changes
+  static const double _headingAlpha = 0.18;
+  static const double _bearingAlpha = 0.28; 
+
   double _prevRawHeading = 0;
 
-  //close reange effects
   late AnimationController _pulseController;
   final AudioPlayer _audioPlayer = AudioPlayer();
   Timer? _fluctuationTimer;
   Timer? _beepTimer;
   double? _displayedDistance;
-  double? _fakeDistanceVal; // Track the "slow decrease" distance
+  double? _fakeDistanceVal; 
   DateTime? _closeRangeStartTime;
   bool _lockedAt1m = false;
 
@@ -81,13 +74,12 @@ with TickerProviderStateMixin {
     _startTracking();
   }
 
-  //TRACKING STREAMS
 
   Future<void> _startTracking() async {
     final hasPermission = await LocationService.requestPermission();
     if (!hasPermission) return;
 
-    // ── My location stream ──
+
     _locationSubscription =
         LocationService.getPositionStream().listen((position) {
       if (!mounted) return;
@@ -96,7 +88,7 @@ with TickerProviderStateMixin {
         myLng = position.longitude;
       });
 
-      // Use GPS heading when moving (more accurate than compass when walking)
+
       if (position.speed > 0.5 && position.heading != 0) {
         _applyHeading(position.heading);
       }
@@ -113,7 +105,6 @@ with TickerProviderStateMixin {
       );
     });
 
-     // ── Compass stream (supplements GPS heading when stationary) ──
     _compassSubscription = FlutterCompass.events?.listen((event) {
       if (!mounted) return;
       if (event.heading != null) {
@@ -121,7 +112,6 @@ with TickerProviderStateMixin {
       }
     });
 
-    // ── Friend location stream ──
     _friendLocationSubscription = FirebaseService.listenToLocation(
       widget.sessionId,
       widget.friendId,
@@ -139,7 +129,6 @@ with TickerProviderStateMixin {
     });
   }  
 
-  //HEADING 
   void _applyHeading(double rawHeading) {
     // Ignore tiny jitter (< 1 degree change)
     double diff = (rawHeading - _prevRawHeading + 540) % 360 - 180;
@@ -155,20 +144,19 @@ with TickerProviderStateMixin {
       );
     });
   }
-//BEARING CALCULATION &SMOOTHING
+
       void _recalcBearing() {
     if (myLat == null        friendLat == null || friendLng == null) return;
 
     final rawBearing = LocationService.calculateBearing(
         myLat!, myLng!, friendLat!, friendLng!);
 
-    // Add to history buffer
+  
     _bearingHistory.add(rawBearing);
     if (_bearingHistory.length > _bearingHistorySize) {
       _bearingHistory.removeAt(0);
     }
 
-    // Average the bearing history using circular mean
     final avgBearing = _circularMean(_bearingHistory);
 
     setState(() {
@@ -180,7 +168,6 @@ with TickerProviderStateMixin {
     });
   }
 
-  /// Circular mean of a list of angles (handles 0/360 wrapping)
   double _circularMean(List<double> angles) {
     double sumSin = 0, sumCos = 0;
     for (final a in angles) {
@@ -192,7 +179,6 @@ with TickerProviderStateMixin {
     return (meanRad * 180 / pi + 360) % 360;
   }
 
-  //ARROW ROTATION
 
   double _calculateArrowRotation() {
     // Relative bearing = where the friend is relative to where I'm facing
@@ -203,8 +189,7 @@ with TickerProviderStateMixin {
     double relative = (_smoothedBearing - _smoothedHeading + 360) % 360;
     return LocationService.getDirectionText(relative);
   }
- //DISTANCE&CLOSERANGE EFFECTS
- void _updateDistance() {
+
     if (myLat == null        friendLat == null || friendLng == null) return;
 
     final realDist = LocationService.calculateDistance(
@@ -233,7 +218,6 @@ with TickerProviderStateMixin {
     _beepTimer?.cancel();
     _lockedAt1m = false;
 
-    // Slowly decrease distance toward 1.0m as integers
     _fluctuationTimer = Timer.periodic(const Duration(milliseconds: 1000), (timer) {
       if (!mounted) return;
       
@@ -246,7 +230,7 @@ with TickerProviderStateMixin {
         
         if (_fakeDistanceVal == 1.0) {
           _lockedAt1m = true;
-          timer.cancel(); // Stop once we hit the target
+          timer.cancel(); 
         }
       } else {
         setState(() {
@@ -274,7 +258,7 @@ with TickerProviderStateMixin {
     _lockedAt1m = false;
   }
 
-  //BUILD
+
   @override
      Widget build(BuildContext context) {
     final distance = _displayedDistance;
@@ -348,7 +332,7 @@ with TickerProviderStateMixin {
                     ),
                   ),
 
-                  /// CENTER – Arrow
+                  
                   SizedBox(
                     width: 280,
                     height: 280,
@@ -393,7 +377,7 @@ with TickerProviderStateMixin {
                     ),
                   ),
 
-                  /// TEXT
+                
                   distance == null
                       ? const CircularProgressIndicator(color: Colors.white)
                       : Column(
@@ -424,7 +408,6 @@ with TickerProviderStateMixin {
                           ],
                         ),
 
-                  /// BUTTON
                   Padding(
                     padding: const EdgeInsets.fromLTRB(28, 0, 28, 28),
                     child: GestureDetector(
@@ -500,9 +483,7 @@ with TickerProviderStateMixin {
   }
 }
 
-// ══════════════════════════════════════════════════════
-//  3D ARROW WIDGET
-// ══════════════════════════════════════════════════════
+
 
 class Arrow3D extends StatelessWidget {
   final double size;

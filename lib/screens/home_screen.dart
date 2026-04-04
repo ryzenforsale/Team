@@ -34,7 +34,7 @@ class_HomeScreenState extends State<HomeScreen> {
     if (!mounted) return;
     setState(() {});
 
-    // Start listening for incoming connections immediately
+  
     listenForAutoConnect();
   }
 
@@ -340,7 +340,6 @@ class_HomeScreenState extends State<HomeScreen> {
           ),
 
 
-          // GLOBAL LIST
           Expanded(
             child: StreamBuilder<List<Map<String, dynamic>>>(
               stream: FirebaseService.getAllDevicesStream(),
@@ -350,7 +349,7 @@ class_HomeScreenState extends State<HomeScreen> {
                 }
 
                 final devices = snapshot.data!;
-                // Filter out myself
+
                 final otherDevices = devices.where((d) => d['id'] != deviceId).toList();
 
                 if (otherDevices.isEmpty) {

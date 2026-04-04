@@ -172,7 +172,7 @@ class HybridLocationService {
       targetLon,
     );
      
-     if (roughDistance < BLUETOOTH_RANGW_THRESHOLD) {
+     if (roughDistance < BLUETOOTH_RANGE_THRESHOLD) {
      final bluetoothAvailable = await BluetoothDistanceService.isBluetoothAvailable();
      return bluetoothAvailable ? 'bluetooth' : 'gps';
      }

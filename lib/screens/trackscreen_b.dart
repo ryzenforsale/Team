@@ -77,7 +77,7 @@ class _TrackingScreenBState extends State<TrackingScreenB>
       },
      );
 
-      //Listen to friend's location (to calculate distance)
+
       _friendLocationSubscription = FirebaseService.listenToLocation(
       widget.sessionId,
       widget.friendId,
@@ -145,7 +145,7 @@ class _TrackingScreenBState extends State<TrackingScreenB>
                 ),
               ),
 
-              //Main content
+             
               Expanded(
                 child: Center(
                   child: distance == null || friendLat == null
@@ -194,7 +194,6 @@ class _TrackingScreenBState extends State<TrackingScreenB>
 
                             const SizedBox(height: 48),
 
-                            //MAIN MESAGE
                             Padding(  
                                padding:
                                   const EdgeInsets.symmetric(horizontal: 40),
@@ -211,7 +210,7 @@ class _TrackingScreenBState extends State<TrackingScreenB>
 
                             const SizedBox(height: 16),
 
-                            //instruction
+                           
                             const Padding(  
                               padding: EdgeInsetsGeometry.symmetric(horizontal: 40),
                              child: Text(
@@ -226,7 +225,7 @@ class _TrackingScreenBState extends State<TrackingScreenB>
 
                             const SizedBox(heinght : 48),
 
-                            // Distance display
+                      
                             Container(
                               padding: const EdgeInsets.symmetric(
                                 horizontal: 32,
@@ -262,7 +261,7 @@ class _TrackingScreenBState extends State<TrackingScreenB>
                 ),
               ),
 
-         // Stop button
+      
               Padding(
                 padding: const EdgeInsets.all(32),
                 child: ElevatedButton(
