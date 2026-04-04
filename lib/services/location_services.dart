@@ -8,7 +8,7 @@ class LocationService {
   static double _processNoise = 0.5;
   static double _measurementNoise = 4.0;
 
-  static const double MAX-DEMO-DISTANCE = 10.0;
+  static const double MAX_DEMO_DISTANCE = 10.0;
   static bool _demoMode = true;
 
   static Future<bool> requestPermission() async {
@@ -21,7 +21,7 @@ class LocationService {
   }
 
 
-   static Future<Position?> getCurrentPosition() async {
+  static Future<Position?> getCurrentPosition() async {
     try {
       final hasPermission = await requestPermission();
       if (!hasPermission) return null;
@@ -65,7 +65,7 @@ class LocationService {
     }
 
 
-     final kalmanGain = _processNoise / (_processNoise + _measurementNoise);
+    final kalmanGain = _processNoise / (_processNoise + _measurementNoise);
     
     final filteredLat = _lastPosition!.latitude + 
         kalmanGain * (newPosition.latitude - _lastPosition!.latitude);
@@ -255,8 +255,3 @@ class LocationService {
       return radians * 180 / pi;
   }
 }
-   
-
-
-
-
