@@ -130,7 +130,7 @@ class BluetoothDistaneService {
       await FlutterBluePlus.stopScan();
       print('⏹️ Stopped BLE scanning');
     } catch (e) {
-      print('❌ Error stopping scan: $e');
+      print('❌ Error stopping scan: $e');  
     }
   }
 
