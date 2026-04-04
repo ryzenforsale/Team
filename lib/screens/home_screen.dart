@@ -6,7 +6,7 @@ import 'tracking_screen_a.dart';
 import 'tracking_screen_b.dart';
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({key});
+  const HomeScreen({super.key, key});
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -15,15 +15,15 @@ class HomeScreen extends StatefulWidget {
 class_HomeScreenState extends State<HomeScreen> {
   String? deviceId;
   String? deviceName;
-  StreamSubscription? _inviteListener;
+  StreamSubscription? inviteListener;
 
  @override
  void iniState() {
   super.initState();
-  _initialize();
+  initialize();
  }
 
- Future<void> _initialize() async {
+ Future<void> initialize() async {
   deviceId = await DeviceService.getDeviceId();
   deviceName = await DeviceService.getDeviceName();
 
@@ -35,28 +35,28 @@ class_HomeScreenState extends State<HomeScreen> {
     setState(() {});
 
     // Start listening for incoming connections immediately
-    _listenForAutoConnect();
+    listenForAutoConnect();
   }
 
-   void _listenForAutoConnect() {
-    _inviteListener = FirebaseService.listenForInstantInvite(deviceId!).listen(
+   void listenForAutoConnect() {
+    inviteListener = FirebaseService.listenForInstantInvite(deviceId!).listen(
       (inviteData) async {
         if (inviteData != null) {
         
-          _inviteListener?.cancel(); 
+          inviteListener?.cancel(); 
 
 
           await FirebaseService.clearInstantInvite(deviceId!);
 
           if (!mounted) return;
 
-          _showFakeConnectionPopup(inviteData['fromId'], inviteData['sessionId']);
+          showFakeConnectionPopup(inviteData['fromId'], inviteData['sessionId']);
         }
       },
     );
   }
 
-  void _showFakeConnectionPopup(String fromId, String sessionId) {
+  void showFakeConnectionPopup(String fromId, String sessionId) {
     showDialog(
       context: context,
       barrierDismissible: false, 
@@ -78,7 +78,7 @@ class_HomeScreenState extends State<HomeScreen> {
               ),
             ).then((_) {
              
-              _listenForAutoConnect();
+              listenForAutoConnect();
             });
           }
         });
@@ -238,7 +238,7 @@ class_HomeScreenState extends State<HomeScreen> {
           ),
         );
       },
-    );
+    )
   }
 
   Future<void> _startInstantTracking(String targetId, String targetName) async {
